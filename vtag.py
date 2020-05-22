@@ -53,38 +53,52 @@ def trainTransition(trainData):
 
 
 def getViterbiTags(words):
-    #Initialize trellis with None
-    vTrellis = [dict.fromkeys(tagSet, None) for word in words]
-    vTrellis[0]['###'] = 0
-    bt = []
-    for i in range(len(words) - 1):
-        word = words[i].split('/')[0]
-        #print(word)
-        tagProbs = {}
-        bt.append({})
-        for tag in tagSet:
-            maxTag = '###'
-            maxProb = None
-            for prevTag in tagSet:
-                prevProb = vTrellis[i][prevTag]
-                trans = tt[prevTag][tag] if prevTag in tt and tag in tt[prevTag] else 0
-                emit = tw[tag][word] if tag in tw and word in tw[tag] else 0
-                totProb = prevProb + trans + emit if prevProb != None and trans != None and emit != None else None
-                if totProb != None and totProb > maxProb:
-                    maxProb = totProb
-                    maxTag = prevTag
-            bt[i][tag] = maxTag
-    print(bt)
-    tagVector = ['###']
-    curTag = bt[-1]['###']
-    i = -1
-    while curTag != '###':
-        print(curTag)
-        tagVector.insert(0, curTag)
-        curTag = bt[i][curTag]
-        i -= 1
+    bt = [dict.fromkeys(tagSet, '###')]
+    trellis = [{}]
 
-    return tagVector
+    #populate first column in trellis
+    for tag in tagSet:
+        emission = tw[tag][words[1].split('/')[0].strip()]
+        transition = tt['###'][tag]
+        trellis[0][tag] = emission + transition if emission != None and transition!= None else None
+
+    for word in words[2:]:
+        bt.append({})
+        col = {}
+        prevCol = trellis[-1]
+        for tag in tagSet:
+            maxTag = prevCol['###']
+            maxVal = -float("inf")
+            for tPrev in prevCol:
+                if prevCol[tPrev] != None and tt[tPrev][tag] != None and prevCol[tPrev] + tt[tPrev][tag] > maxVal:
+                    maxTag = tPrev
+                    maxVal = prevCol[tPrev] + tt[tPrev][tag]
+            bt[-1][tag] = maxTag
+
+
+            emission = tw[tag][word.split('/')[0].strip()]
+            col[tag] = emission + maxVal if emission != None and maxVal != None else None
+        trellis.append(col)
+
+    print(len(bt))
+    print(len(words))
+
+    tagSeq = ['###']
+    correctCount = 0
+    for i in range(len(words) - 1, 0, -1):
+        col = bt[i - 1]
+        tag = col[tagSeq[-1]]
+        if tag == words[i].split('/')[1].strip():
+            correctCount += 1
+        tagSeq.append(tag)
+
+    return (tagSeq, correctCount/len(words))
+
+
+
+
+
+
 
 
 def main():
@@ -95,6 +109,8 @@ def main():
         trainEmission(trainData)
         trainTransition(trainData)
         trainFile.close()
+        #print(tt)
+        #print(tw)
 
         testFile = open('data/ic/{}.txt'.format(argv[2]), 'r')
         testData = [line for line in testFile]
