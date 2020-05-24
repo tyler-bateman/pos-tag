@@ -6,13 +6,29 @@ tt = {}
 #The emission probabilities in log space
 tw = {}
 
-tagSet = ['H', 'C', '###']
-vocab = ['1', '2', '3', '###']
+tagDict = {}
+tagSet = []
+
+def buildDict(trainData):
+    global tagDict, tagSet
+    tagDict = {}
+    tagSet = []
+    for line in trainData:
+        (word, tag) = line.split('/')
+        tag = tag.strip()
+        if not tag in tagSet:
+            tagSet.append(tag)
+
+        if word in tagDict:
+            if not tag in tagDict[word]:
+                tagDict[word].append(tag)
+        else:
+            tagDict[word] = [tag]
 
 def trainEmission(trainData):
     twCounts = dict.fromkeys(tagSet, {})
     for tag in twCounts:
-        twCounts[tag] = dict.fromkeys(vocab, 0)
+        twCounts[tag] = dict.fromkeys(tagDict.keys(), 1)
 
     for line in trainData:
         (word, tag) = line.split('/')
@@ -30,7 +46,7 @@ def trainEmission(trainData):
 def trainTransition(trainData):
     ttCounts = dict.fromkeys(tagSet, {})
     for tag in ttCounts:
-        ttCounts[tag] = dict.fromkeys(tagSet, 0)
+        ttCounts[tag] = dict.fromkeys(tagSet, 1)
 
     for i in range(len(trainData) - 1):
         t1 = trainData[i].split('/')[1].strip()
@@ -52,13 +68,12 @@ def trainTransition(trainData):
 
 
 def getViterbiTags(words):
-    tmp = [dict.fromkeys(tagSet, '###')]
     trellis = [{}]
 
     bt = dict.fromkeys(tagSet, ['###'])
 
     #populate first column in trellis
-    for tag in tagSet:
+    for tag in tagDict['###']:
         emission = tw[tag][words[1].split('/')[0].strip()]
         transition = tt['###'][tag]
         trellis[0][tag] = emission + transition
@@ -69,35 +84,59 @@ def getViterbiTags(words):
         col = {}
         newbt = {}
         prevCol = trellis[-1]
-        for tag in tagSet:
-            (prob, prevTag) = max([(prevCol[prevTag] + tt[prevTag][tag] + tw[tag][word] , prevTag) for prevTag in tagSet])
-            col[tag] = prob
-            newbt[tag] = bt[prevTag] + [tag]
+
+        if word in tagDict:
+            for tag in tagDict[word]:
+                emission = tw[tag][word] if word != '###' else 0 if tag == '###' else -float('inf')
+                (prob, prevTag) = max([(prevCol[prevTag] + tt[prevTag][tag] + tw[tag][word] , prevTag) for prevTag in prevCol])
+                col[tag] = prob
+                newbt[tag] = bt[prevTag] + [tag]
+        else:
+            for tag in tagSet:
+                (prob, prevTag) = max([(prevCol[prevTag] + tt[prevTag][tag], prevTag) for prevTag in prevCol])
+                col[tag] = prob
+                newbt[tag] = bt[prevTag] + [tag]
         bt = newbt
         trellis.append(col)
 
-    correct = 0
-    for i in range(len(words)):
-        if bt['###'][i] == words[i].split('/')[1].strip() and bt['###'][i] != '###':
-            correct += 1
+    knownCount = 0
+    knownCorrect = 0
+    novelCount = 0
+    novelCorrect = 0
 
-    return (bt['###'], 100 * correct/(len(words) - 2))
+    for i in range(len(words)):
+        (word, cTag) = words[i].split('/')
+        cTag = cTag.strip()
+        gTag = bt['###'][i]
+        novel = not word in tagDict
+        if novel:
+            novelCount += 1
+        else:
+            knownCount += 1
+        if gTag == cTag and gTag != '###':
+            if novel:
+                novelCorrect += 1
+            else:
+                knownCorrect += 1
+
+    return (bt['###'], 100 * (knownCorrect + novelCorrect) /(knownCount + novelCount), 100 * knownCorrect/knownCount, 100 * novelCorrect / novelCount)
 
 
 def main():
     from sys import argv
     if len(argv) == 3:
-        trainFile = open('data/ic/{}.txt'.format(argv[1]), 'r')
-        trainData = [line for line in trainFile]
+        trainFile = open('data/en/{}.txt'.format(argv[1]), 'r')
+        trainData = [line.strip() for line in trainFile]
+        buildDict(trainData)
         trainEmission(trainData)
         trainTransition(trainData)
         trainFile.close()
 
-        testFile = open('data/ic/{}.txt'.format(argv[2]), 'r')
+        testFile = open('data/en/{}.txt'.format(argv[2]), 'r')
         testData = [line for line in testFile]
 
-        (tags, accuracy) = getViterbiTags(testData)
-        print('Tagging accuracy (Viterbi decoding): {}%'.format(accuracy))
+        (tags, accuracy, knownAccuracy, novelAccuracy) = getViterbiTags(testData)
+        print('Tagging accuracy (Viterbi decoding): {}% (known: {}% novel: {}%)'.format(accuracy, knownAccuracy, novelAccuracy))
 
 
         testFile.close()
