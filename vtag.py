@@ -30,6 +30,7 @@ def trainEmission(trainData):
     for tag in twCounts:
         twCounts[tag] = dict.fromkeys(tagDict.keys(), 1)
 
+
     for line in trainData:
         (word, tag) = line.split('/')
         word = word.strip()
@@ -41,6 +42,11 @@ def trainEmission(trainData):
         tw[tag] = {}
         for word in twCounts[tag]:
             tw[tag][word] = log(twCounts[tag][word]) - totalLog if twCounts[tag][word] > 0 else -float('inf')
+
+    #Hard code the emission for '###'
+    for tag in tagSet:
+        tw['###'][tag] = -float('inf')
+    tw['###']['###'] = 0
 
 
 def trainTransition(trainData):
